@@ -500,7 +500,18 @@ class QueueService {
           }
         }
       } else {
-        List<jellyfin_models.BaseItemDto> itemList = await _jellyfinApiHelper.getItems(itemIds: missingIds) ?? [];
+        // Bound the fetch so a stalled request at startup can't leave the queue
+        // stuck in the loading state forever (showing "Restoring queue…" with no
+        // way out). On timeout this throws, which the finally block below turns
+        // into the failed state, surfacing the existing tap to retry UI.
+        List<jellyfin_models.BaseItemDto> itemList =
+            await _jellyfinApiHelper.getItems(itemIds: missingIds).timeout(
+                  const Duration(seconds: 20),
+                  onTimeout: () => throw TimeoutException(
+                    "Timed out fetching items while restoring the saved queue.",
+                  ),
+                ) ??
+                [];
         for (var d2 in itemList) {
           idMap[d2.id] = d2;
         }
